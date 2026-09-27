@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IVRSC</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f5f5f5;color:#111}
+header{height:58px;background:#fff;border-bottom:1px solid #ddd;display:flex;align-items:center;padding:0 16px;font-weight:800;color:#16a34a;font-size:22px}
+main{max-width:650px;margin:auto;padding:14px 14px 95px}
+.card{background:#fff;border:1px solid #ddd;border-radius:18px;padding:15px;margin-bottom:14px}
+textarea,input{width:100%;padding:12px;border:1px solid #ddd;border-radius:12px;margin:7px 0;font:inherit}
+button{border:0;border-radius:13px;padding:11px 15px;background:#16a34a;color:#fff;font-weight:700}
+.post img,.post video{width:100%;border-radius:14px;margin-top:10px;max-height:600px;object-fit:cover}
+.actions{display:flex;gap:8px;margin-top:10px}.actions button{background:#eef8ef;color:#15803d}
+nav{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:min(96vw,560px);height:68px;background:#fff;border:1px solid #ddd;border-radius:24px;display:grid;grid-template-columns:1fr 1fr 1.08fr 1fr 1fr;gap:5px;padding:7px;box-shadow:0 8px 30px #0002}
+nav button{background:transparent;color:#555;padding:4px;font-size:12px}nav button.active{background:#e9f8ec;color:#15803d}
+nav .plus{background:#16a34a;color:white;border-radius:50%;font-size:25px}
+small{color:#666}
+</style>
+</head>
+<body>
+<header>IVRSC</header>
+<main>
+<section id="feed"><div class="card"><h2>Para Ti</h2><div id="posts"><small>Cargando publicaciones...</small></div></div></section>
+<section id="reels" hidden><div class="card"><h2>Reels</h2><div id="reelPosts"></div></div></section>
+<section id="community" hidden><div class="card"><h2>Comunidad</h2><input id="communityName" placeholder="Nombre de comunidad"><button onclick="createCommunity()">Crear</button><div id="communities"></div></div></section>
+<section id="profile" hidden><div class="card"><h2>Perfil</h2><input id="profileName" placeholder="Tu nombre"><textarea id="profileBio" placeholder="Biografía"></textarea><button onclick="saveProfile()">Guardar perfil</button></div></section>
+</main>
+<div id="createBox" class="card" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,500px);z-index:20;box-shadow:0 10px 40px #0003">
+<h2>Nueva publicación</h2><textarea id="caption" placeholder="¿Qué quieres publicar?"></textarea>
+<input id="media" type="file" accept="image/*,video/*">
+<div class="actions"><button onclick="publish()">Publicar</button><button onclick="closeCreate()" style="background:#777">Cerrar</button></div>
+</div>
+<nav>
+<button class="active" onclick="page('feed',this)">⌂<br>Para Ti</button>
+<button onclick="page('reels',this)">▶<br>Reels</button>
+<button class="plus" onclick="openCreate()">+</button>
+<button onclick="page('community',this)">♧<br>Comunidad</button>
+<button onclick="page('profile',this)">●<br>Perfil</button>
+</nav>
+<script>
+const $=id=>document.getElementById(id);
+const KEY='ivrsc_web_state_v2';
+let state={posts:[],communities:[],profile:{name:'',bio:''}};
+let serverMode=false;
+try{const saved=JSON.parse(localStorage.getItem(KEY)||'null');if(saved)state={...state,...saved};}catch(e){}
+let posts=state.posts, communities=state.communities, profile=state.profile;
+async function api(path,opt={}){
+  const res=await fetch('/api'+path,{headers:{'Content-Type':'application/json'},...opt});
+  if(!res.ok)throw new Error(await res.text()); return res.json();
+}
+function persist(){state={posts,communities,profile};localStorage.setItem(KEY,JSON.stringify(state));}
+async function load(){
+  try{const s=await api('/state');posts=s.posts||[];communities=s.communities||[];profile=s.profile||profile;serverMode=true;persist();}
+  catch(e){serverMode=false;render();}
+  render();
+}
+function render(){
+ $('posts').innerHTML=posts.map(p=>`<div class="post card" id="post-${esc(p.id)}"><b>${esc(p.author||'Usuario')}</b><p>${esc(p.caption||'')}</p>${p.media?mediaHtml(p):''}<div class="actions"><button type="button" onclick="likePost('${esc(p.id)}')">♡ ${Number(p.likes)||0}</button><button type="button" onclick="sharePost('${esc(p.id)}')">Compartir</button></div></div>`).join('')||'<small>Aún no hay publicaciones.</small>';
+ $('reelPosts').innerHTML=posts.filter(p=>p.type==='video'&&p.media).map(p=>`<div class="post card"><b>${esc(p.author||'Usuario')}</b>${mediaHtml(p)}</div>`).join('')||'<small>Aún no hay reels.</small>';
+ $('communities').innerHTML=communities.map(c=>`<div class="card"><b>${esc(c.name)}</b><br><small>${Number(c.members)||0} miembros</small><br><button type="button" onclick="joinCommunity('${esc(c.id)}')">Unirme</button></div>`).join('')||'<small>No hay comunidades.</small>';
+ $('profileName').value=profile.name||''; $('profileBio').value=profile.bio||'';
+}
+function mediaHtml(p){return p.type==='video'?`<video src="${esc(p.media)}" controls playsinline></video>`:`<img src="${esc(p.media)}" alt="Publicación">`}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function page(id,b){['feed','reels','community','profile'].forEach(x=>$(x).hidden=x!==id);document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));if(b)b.classList.add('active');window.scrollTo({top:0,behavior:'smooth'});}
+function openCreate(){$('createBox').style.display='block';$('caption').focus()}
+function closeCreate(){$('createBox').style.display='none'}
+function readFile(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error||new Error('No se pudo leer el archivo'));r.readAsDataURL(f)})}
+async function publish(){
+ try{const f=$('media').files[0];const caption=$('caption').value.trim();if(!caption&&!f)return alert('Escribe algo o selecciona una imagen/video.');if(f&&f.size>45*1024*1024)return alert('El archivo supera 45 MB.');
+ const mediaData=f?await readFile(f):'';const post={id:crypto.randomUUID?.()||Date.now().toString(),author:profile.name||'Usuario',caption,media:mediaData,type:f?.type?.startsWith('video/')?'video':'image',likes:0};
+ if(serverMode){try{await api('/posts',{method:'POST',body:JSON.stringify({caption,media:mediaData,type:post.type})});}catch(e){serverMode=false;posts.unshift(post);persist();}}
+ else{posts.unshift(post);persist()}
+ $('caption').value='';$('media').value='';closeCreate();render();page('feed',document.querySelector('nav button'));
+ }catch(e){alert('No se pudo crear la publicación: '+e.message)}
+}
+async function likePost(id){const p=posts.find(x=>x.id===id);if(!p)return;if(serverMode){try{await api('/posts/'+encodeURIComponent(id)+'/like',{method:'POST'});await load();return}catch(e){serverMode=false}}p.likes=(Number(p.likes)||0)+1;persist();render()}
+async function sharePost(id){const url=location.href.split('#')[0]+'#post-'+encodeURIComponent(id);try{if(navigator.share)await navigator.share({title:'IVRSC',url});else if(navigator.clipboard)await navigator.clipboard.writeText(url);else prompt('Copia este enlace:',url);}catch(e){if(e.name!=='AbortError')alert('No se pudo compartir.')}}
+async function saveProfile(){const next={name:$('profileName').value.trim().slice(0,60),bio:$('profileBio').value.trim().slice(0,300)};profile=next;posts.forEach(p=>{if(p.author==='Usuario'&&!p.authorId)p.author=profile.name||'Usuario'});if(serverMode){try{await api('/profile',{method:'POST',body:JSON.stringify(next)});}catch(e){serverMode=false}}persist();render();alert('Perfil guardado')}
+async function createCommunity(){const name=$('communityName').value.trim().slice(0,60);if(!name)return alert('Escribe un nombre.');const c={id:crypto.randomUUID?.()||Date.now().toString(),name,members:1};if(serverMode){try{await api('/communities',{method:'POST',body:JSON.stringify({name})});}catch(e){serverMode=false;communities.push(c);persist()}}else{communities.push(c);persist()}$('communityName').value='';await load()}
+async function joinCommunity(id){const c=communities.find(x=>x.id===id);if(!c)return;if(serverMode){try{await api('/communities/'+encodeURIComponent(id)+'/join',{method:'POST'});await load();return}catch(e){serverMode=false}}c.members=(Number(c.members)||0)+1;persist();render()}
+window.addEventListener('keydown',e=>{if(e.key==='Escape')closeCreate()});
+load();
+</script>
+</body></html>
